@@ -1,0 +1,61 @@
+name: Release - CI
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '**/Makefile'
+      - '**/LICENSE'
+    tags: 
+      - 'v*.*.*'
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+jobs:
+  build:
+    name: Build,Test & Release    
+    runs-on: ubuntu-latest
+    # Ensuring to run this action only if tag provided
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Get the version
+        id: get_version
+        run: |
+            arrTag=(${GITHUB_REF//\// })
+            VERSION="${arrTag[2]}"
+            VERSION="${VERSION//v}"
+            echo VERSION:${VERSION}
+            echo ::set-output name=VERSION::${VERSION}
+        shell: bash
+      - name: Checkout source code
+        uses: actions/checkout@v3
+        with:
+          # Disabling shallow clone is recommended for improving relevancy of reporting
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Set build number 
+        run: echo "BuildNumber=$(( $GITHUB_RUN_NUMBER + 16368 ))" >> $GITHUB_ENV
+      - name: Setup dotNet
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: '6.0.x'
+      - name: Build
+        run: |
+          dotnet build --configuration Release
+      - name: Unit Tests
+        run: |
+          dotnet test -c Release --no-restore --no-build ./tests/Ycs.Tests/Ycs.Tests.csproj --collect:"XPlat Code Coverage" --logger:"console;verbosity=detailed" --results-directory /tmp/test-results/unit/    
+          curl https://deepsource.io/cli | sh
+          ./bin/deepsource report --analyzer test-coverage --key csharp --value-file /tmp/test-results/unit/*/coverage.cobertura.xml     
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+      - name: Publish Nuget to GitHub registry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: |
+          dotnet pack -c Release --no-restore --no-build
+          dotnet nuget add source --username USERNAME --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/janrauchfuss/index.json"
+          dotnet nuget push './src/**/*.nupkg' -k ${PACKAGES_TOKEN} -s https://nuget.pkg.github.com/janrauchfuss/index.json

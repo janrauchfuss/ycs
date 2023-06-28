@@ -1,0 +1,39 @@
+name: PR - CI
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+    branches:
+      - main
+      
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+        with:
+          # Disabling shallow clone is recommended for improving relevancy of reporting
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Setup dotNet
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: '6.0.x'
+      - name: Build
+        run: |
+          dotnet build --configuration Release
+      - name: Unit Tests
+        run: |
+          dotnet test -c Release --no-restore --no-build ./tests/Ycs.Tests/Ycs.Tests.csproj --collect:"XPlat Code Coverage" --logger:"console;verbosity=detailed" --results-directory /tmp/test-results/unit/    
+          curl https://deepsource.io/cli | sh
+          ./bin/deepsource report --analyzer test-coverage --key csharp --value-file /tmp/test-results/unit/*/coverage.cobertura.xml     
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
