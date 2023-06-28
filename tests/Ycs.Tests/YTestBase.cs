@@ -145,7 +145,7 @@ namespace Ycs
                 return;
             }
 
-            Assert.IsTrue((o1 == null) == (o2== null));
+            Assert.IsTrue((o1 == null) == (o2 == null));
 
             switch (o1)
             {
